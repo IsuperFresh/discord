@@ -31,10 +31,14 @@ export function validateNickname(member, config) {
 
 export function buildWarningMessage(config, nickname) {
   return [
-    `Твій нік на сервері зараз: "${nickname}".`,
-    `Потрібний формат: ігровий нік + реальне ім'я в дужках.`,
-    `Приклад: ${config.validExample}`,
+    "Вітаю у гільдії Award of Light!",
     "",
-    "Будь ласка, зміни nickname на сервері."
+    "Для доступу до всіх каналів потрібно вказати nickname у форматі:",
+    "ігровий нік + реальне ім'я в дужках.",
+    "",
+    `Твій нік зараз: "${nickname}".`,
+    `Приклад правильного формату: ${config.validExample}`,
+    "",
+    "Натисни кнопку нижче, щоб ввести свій ігровий нік та ім'я."
   ].join("\n");
 }
