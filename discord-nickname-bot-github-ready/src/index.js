@@ -3,7 +3,6 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  ChannelType,
   Client,
   Events,
   GatewayIntentBits,
@@ -238,12 +237,8 @@ async function updateNeedsFixRole(member, isValid) {
     return;
   }
 
-  if (isValid && member.roles.cache.has(role.id)) {
+  if (member.roles.cache.has(role.id)) {
     await member.roles.remove(role, "Nickname format is valid");
-  }
-
-  if (!isValid && !member.roles.cache.has(role.id)) {
-    await member.roles.add(role, "Nickname format is invalid");
   }
 }
 
@@ -254,9 +249,9 @@ async function enforceNicknameLockRolePolicy(member, isValid) {
 
   const fallbackRole = findRoleByName(member.guild, config.fallbackRoleName);
 
-  if (!fallbackRole) {
-    console.warn(`Lock role policy skipped: missing fallback role "${config.fallbackRoleName}"`);
-    return;
+  if (fallbackRole && member.roles.cache.has(fallbackRole.id)) {
+    await member.roles.remove(fallbackRole, "Nickname lock: remove fallback role")
+      .catch((error) => console.warn(`Failed to remove fallback role from ${member.user.tag}: ${error.message}`));
   }
 
   if (!isValid) {
@@ -271,17 +266,7 @@ async function enforceNicknameLockRolePolicy(member, isValid) {
         .catch((error) => console.warn(`Failed to remove managed roles from ${member.user.tag}: ${error.message}`));
     }
 
-    if (!member.roles.cache.has(fallbackRole.id)) {
-      await member.roles.add(fallbackRole, "Nickname lock: invalid nickname")
-        .catch((error) => console.warn(`Failed to add fallback role to ${member.user.tag}: ${error.message}`));
-    }
-
     return;
-  }
-
-  if (member.roles.cache.has(fallbackRole.id)) {
-    await member.roles.remove(fallbackRole, "Nickname lock: nickname is valid")
-      .catch((error) => console.warn(`Failed to remove fallback role from ${member.user.tag}: ${error.message}`));
   }
 
   const storedRoleIds = getStoredRoleIds(member.guild.id, member.id);
@@ -345,8 +330,9 @@ async function syncAllGuilds(reason) {
     }
 
     const roleId = getNeedsFixRoleId(guild);
+    const lockEnabled = config.nicknameLockEnabledByGuild[guild.id];
 
-    if (!roleId) {
+    if (!roleId && !lockEnabled) {
       continue;
     }
 
@@ -362,48 +348,13 @@ async function syncAllGuilds(reason) {
   }
 }
 
-async function applyNicknameLock(guild, exemptChannelId) {
+async function applyNicknameLock(guild) {
   config.nicknameLockEnabledByGuild[guild.id] = true;
   saveConfig(config);
 
-  const role = await ensureNeedsFixRole(guild);
-  const channels = await guild.channels.fetch();
-  let lockedCount = 0;
-  let failedCount = 0;
-
-  for (const channel of channels.values()) {
-    if (!channel || channel.type === ChannelType.DM) {
-      continue;
-    }
-
-    try {
-      if (channel.id === exemptChannelId) {
-        await channel.permissionOverwrites.edit(
-          role,
-          {
-            ViewChannel: true,
-            SendMessages: true,
-            UseApplicationCommands: true
-          },
-          { reason: "Allow members to fix nickname" }
-        );
-      } else {
-        await channel.permissionOverwrites.edit(
-          role,
-          { ViewChannel: false },
-          { reason: "Hide channels until nickname format is fixed" }
-        );
-      }
-
-      lockedCount += 1;
-    } catch {
-      failedCount += 1;
-    }
-  }
-
   const syncResult = await syncNeedsFixRoles(guild, true);
 
-  return { role, lockedCount, failedCount, ...syncResult };
+  return { ...syncResult };
 }
 
 async function removeNicknameLock(guild) {
@@ -411,35 +362,24 @@ async function removeNicknameLock(guild) {
   saveConfig(config);
 
   const roleId = getNeedsFixRoleId(guild);
-
-  if (!roleId) {
-    return { unlockedCount: 0, failedCount: 0, removedRoleCount: 0 };
-  }
-
-  const role = await guild.roles.fetch(roleId).catch(() => null);
-
-  if (!role) {
-    return { unlockedCount: 0, failedCount: 0, removedRoleCount: 0 };
-  }
-
-  const channels = await guild.channels.fetch();
+  const role = roleId ? await guild.roles.fetch(roleId).catch(() => null) : null;
   let unlockedCount = 0;
   let failedCount = 0;
 
-  for (const channel of channels.values()) {
-    if (!channel || channel.type === ChannelType.DM) {
-      continue;
-    }
+  if (role) {
+    const channels = await guild.channels.fetch();
 
-    try {
-      const overwrite = channel.permissionOverwrites.cache.get(role.id);
+    for (const channel of channels.values()) {
+      try {
+        const overwrite = channel?.permissionOverwrites?.cache.get(role.id);
 
-      if (overwrite) {
-        await overwrite.delete("Disable nickname lock");
-        unlockedCount += 1;
+        if (overwrite) {
+          await overwrite.delete("Disable nickname lock");
+          unlockedCount += 1;
+        }
+      } catch {
+        failedCount += 1;
       }
-    } catch {
-      failedCount += 1;
     }
   }
 
@@ -447,7 +387,7 @@ async function removeNicknameLock(guild) {
   let removedRoleCount = 0;
 
   for (const member of members.values()) {
-    if (!member.roles.cache.has(role.id)) {
+    if (role && !member.roles.cache.has(role.id)) {
       const storedRoleIds = getStoredRoleIds(guild.id, member.id);
 
       if (!storedRoleIds.length) {
@@ -470,7 +410,7 @@ async function removeNicknameLock(guild) {
       await member.roles.remove(fallbackRole, "Disable nickname lock: remove fallback role").catch(() => null);
     }
 
-    if (member.roles.cache.has(role.id)) {
+    if (role && member.roles.cache.has(role.id)) {
       await member.roles.remove(role, "Disable nickname lock").then(() => {
         removedRoleCount += 1;
       }).catch(() => null);
@@ -612,12 +552,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
-    const exemptChannel = interaction.options.getChannel("exempt_channel") || interaction.channel;
-    const result = await applyNicknameLock(interaction.guild, exemptChannel.id);
+    const result = await applyNicknameLock(interaction.guild);
 
     await interaction.editReply(
-      `Lock увімкнено для ролі ${result.role}. Канал для виправлення: ${exemptChannel}. ` +
-        `Оновлено каналів: ${result.lockedCount}. Помилок: ${result.failedCount}. ` +
+      `Lock увімкнено. Бот більше не видає Pug/Fix nickname, а тимчасово забирає керовані ролі. ` +
         `Перевірено учасників: ${result.checkedCount}. З неправильним ніком: ${result.invalidCount}.`
     );
     return;
