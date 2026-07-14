@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const defaultConfig = {
-  nicknameRegex: "^.{2,24}\\s?\\([\\p{L}][\\p{L}'ʼ -]{1,24}\\)$",
+  nicknameRegex: "^[^\\p{L}\\p{N}()]{0,4}[^()]{2,24}\\s?\\(\\s*[\\p{L}][\\p{L}'ʼ -]{1,24}\\s*\\)[^\\p{L}\\p{N}()]{0,4}$",
   validExample: "Owlbeback (Рома)",
   logChannelId: "",
   needsFixRoleId: "",
