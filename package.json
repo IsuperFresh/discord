@@ -1,0 +1,13 @@
+{
+  "name": "discord-railway-root",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Railway root wrapper for discord nickname bot.",
+  "scripts": {
+    "build": "cd discord-nickname-bot-github-ready && npm ci",
+    "start": "cd discord-nickname-bot-github-ready && npm start"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
