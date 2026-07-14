@@ -562,10 +562,6 @@ client.on(Events.GuildMemberAdd, async (member) => {
 });
 
 client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
-  if (getMemberNickname(oldMember) === getMemberNickname(newMember)) {
-    return;
-  }
-
   await checkMember(newMember);
 });
 
