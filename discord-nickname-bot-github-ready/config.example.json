@@ -1,0 +1,32 @@
+{
+  "nicknameRegex": "^.{2,24}\\s?\\([\\p{L}][\\p{L}'ʼ -]{1,24}\\)$",
+  "validExample": "Owlbeback (Рома)",
+  "logChannelId": "",
+  "needsFixRoleId": "",
+  "needsFixRoleIdsByGuild": {},
+  "needsFixRoleName": "Fix nickname",
+  "exemptRoleIds": [],
+  "exemptRoleNames": [
+    "Dota",
+    "Guider",
+    "Server Booster",
+    "FlaviBot",
+    "Raid-Helper",
+    "Jockie Music",
+    "Jockie Music (1)"
+  ],
+  "managedRoleNames": [
+    "Президент",
+    "Прем'єр-міністр",
+    "Голова Ради",
+    "Спікер",
+    "Міністр",
+    "Ветеран фракції",
+    "Депутат"
+  ],
+  "fallbackRoleName": "Pug",
+  "defaultValidRoleName": "Депутат",
+  "nicknameLockEnabledByGuild": {},
+  "storedRoleIdsByGuild": {},
+  "dmUsers": true
+}
