@@ -175,8 +175,8 @@ async function setMemberNicknameFromInput(interaction, gameNick, realName, guild
     });
 }
 
-async function notifyMember(member, nickname) {
-  const warningMessage = buildWarningMessage(config, nickname);
+async function notifyMember(member, nickname, reason = "default") {
+  const warningMessage = buildWarningMessage(config, nickname, reason);
   let dmSent = false;
 
   if (config.dmUsers) {
@@ -297,13 +297,13 @@ async function enforceNicknameLockRolePolicy(member, isValid) {
   }
 }
 
-async function syncNeedsFixRoles(guild, shouldNotify = false) {
+async function syncNeedsFixRoles(guild, shouldNotify = false, reason = "default") {
   const members = await fetchGuildMembers(guild);
   let checkedCount = 0;
   let invalidCount = 0;
 
   for (const member of members.values()) {
-    const result = await checkMember(member, shouldNotify);
+    const result = await checkMember(member, shouldNotify, reason);
 
     if (!result.checked) {
       continue;
@@ -352,7 +352,7 @@ async function applyNicknameLock(guild) {
   config.nicknameLockEnabledByGuild[guild.id] = true;
   saveConfig(config);
 
-  const syncResult = await syncNeedsFixRoles(guild, true);
+  const syncResult = await syncNeedsFixRoles(guild, true, "lock");
 
   return { ...syncResult };
 }
@@ -420,7 +420,7 @@ async function removeNicknameLock(guild) {
   return { unlockedCount, failedCount, removedRoleCount };
 }
 
-async function checkMember(member, shouldNotify = true) {
+async function checkMember(member, shouldNotify = true, reason = "default") {
   if (isExempt(member, config)) {
     return { checked: false, isValid: true, nickname: getMemberNickname(member) };
   }
@@ -432,20 +432,20 @@ async function checkMember(member, shouldNotify = true) {
   let notification = { dmSent: false };
 
   if (!result.isValid && shouldNotify) {
-    notification = await notifyMember(member, result.nickname);
+    notification = await notifyMember(member, result.nickname, reason);
   }
 
   return { checked: true, ...result, ...notification };
 }
 
-async function collectInvalidMembers(guild, shouldNotify = false) {
+async function collectInvalidMembers(guild, shouldNotify = false, reason = "default") {
   const members = await fetchGuildMembers(guild);
   const invalidMembers = [];
   let dmSentCount = 0;
   let dmFailedCount = 0;
 
   for (const member of members.values()) {
-    const result = await checkMember(member, shouldNotify);
+    const result = await checkMember(member, shouldNotify, reason);
 
     if (result.checked && !result.isValid) {
       invalidMembers.push(`${member.user.tag}: ${result.nickname}`);
@@ -498,11 +498,16 @@ process.on("unhandledRejection", (error) => {
 });
 
 client.on(Events.GuildMemberAdd, async (member) => {
-  await checkMember(member);
+  await checkMember(member, true, "join");
 });
 
 client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
-  await checkMember(newMember);
+  if (getMemberNickname(oldMember) === getMemberNickname(newMember)) {
+    await checkMember(newMember, false);
+    return;
+  }
+
+  await checkMember(newMember, true, "changed");
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -572,7 +577,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     await interaction.deferReply({ ephemeral: true });
 
-    const result = await collectInvalidMembers(interaction.guild, true);
+    const result = await collectInvalidMembers(interaction.guild, true, "warn");
     await interaction.editReply(buildInvalidMembersReply(result, true));
     return;
   }
@@ -589,7 +594,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await interaction.deferReply({ ephemeral: true });
 
     const shouldNotify = interaction.options.getBoolean("notify") ?? false;
-    const result = await collectInvalidMembers(interaction.guild, shouldNotify);
+    const result = await collectInvalidMembers(interaction.guild, shouldNotify, "check");
     await interaction.editReply(buildInvalidMembersReply(result, shouldNotify));
   }
 });
